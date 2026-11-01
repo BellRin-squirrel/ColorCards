@@ -55,8 +55,14 @@ body {
 }
 
 #player_cards {
-    
+
 }
+
+.card.Blue { background-color: #0000ff; }
+.card.Green { background-color: #00ff00; }
+.card.Red { background-color: #ff0000; }
+.card.Yellow { background-color: #f6d727; }
+.card.None { background: linear-gradient(to bottom right,red,orange,yellow,green,blue,indigo,violet); }
 
 .player_card {
     display: inline-flex;
