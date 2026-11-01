@@ -37,13 +37,14 @@ body {
     box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.4);
 }
 
-#top_card {
-    /* border: 2px solid #000000; */
-    display: inline-flex;
-    width: 100px;
-    height: 180px;
-}
+/* カードごとの色 */
+.card.Blue { background-color: #0000ff; }
+.card.Green { background-color: #00ff00; }
+.card.Red { background-color: #ff0000; }
+.card.Yellow { background-color: #f6d727; }
+.card.None { background: linear-gradient(to bottom right,red,orange,yellow,green,blue,indigo,violet); }
 
+/* カード基本装飾 */
 .card {
     border-radius: 10px;
     padding: 10px;
@@ -54,16 +55,15 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
 }
 
-#player_cards {
-
+/* 盤面のカード */
+#top_card {
+    /* border: 2px solid #000000; */
+    display: inline-flex;
+    width: 100px;
+    height: 180px;
 }
 
-.card.Blue { background-color: #0000ff; }
-.card.Green { background-color: #00ff00; }
-.card.Red { background-color: #ff0000; }
-.card.Yellow { background-color: #f6d727; }
-.card.None { background: linear-gradient(to bottom right,red,orange,yellow,green,blue,indigo,violet); }
-
+/* プレイヤーのカードそれぞれ */
 .player_card {
     display: inline-flex;
     width: 100px;

@@ -127,13 +127,6 @@ impl Deck {
         Deck { cards: grid }
     }
 
-    fn show_cards(&self) {
-        println!("[Debug] --- デッキのカード一覧 (合計: {}枚) ---", self.cards.len());
-        for (i, (color, number)) in self.cards.iter().enumerate() {
-            println!("[Debug] {:3}番目: 色 = {:?}, 種類 = {:?}", i + 1, color, number);
-        }
-    }
-
     fn shuffle(&mut self) {
         println!("[Debug] カードをシャッフルしています");
         let mut rng = rng();
@@ -270,9 +263,9 @@ fn invoke_get_player_cards(state: State<Mutex<PlayerCards>>) -> Vec<(card_color,
 }
 
 #[tauri::command]
-fn show_data(state: State<Mutex<GameConfig>>) {
+fn invoke_get_game_config(state: State<Mutex<GameConfig>>) -> (u32, u32){
     let data = state.lock().unwrap();
-    println!("現在の設定: 人数 = {}, 回数 = {}", data.people, data.play_times);
+    (data.people, data.play_times)
 }
 
 fn main() {
@@ -283,7 +276,7 @@ fn main() {
         .manage(Mutex::new(PlayerCards::new()))
         .manage(Mutex::new(StageCard::new()))
         .manage(Mutex::new(GameConfig { people: 0, play_times: 0 }))
-        .invoke_handler(tauri::generate_handler![setup, show_data, invoke_get_stage_card, invoke_get_player_cards])
+        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

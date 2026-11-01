@@ -41,4 +41,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         player_card.textContent = enum_to_display[card[1]] == undefined ? card[1] : enum_to_display[card[1]];
         el_player_cards.appendChild(player_card);
     }
+
+    // CPU人数取得
+    let cpu_members = await invoke("invoke_get_game_config")[0];
+    console.log(cpu_members);
 });
