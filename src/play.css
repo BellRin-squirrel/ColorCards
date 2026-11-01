@@ -1,0 +1,51 @@
+body {
+    min-height: 97vh;
+    background-color: #c48a4e;
+    background-image: 
+        /* 1. 全体のスポットライト風の陰影（中央がやや明るく、端が暗い） */
+        radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.35)),
+        
+        /* 2. 板の継ぎ目（縦の溝） */
+        repeating-linear-gradient(
+            90deg,
+            transparent 0px,
+            transparent 198px,
+            rgba(0, 0, 0, 0.25) 199px,
+            rgba(255, 255, 255, 0.1) 200px
+        ),
+        
+        /* 3. 木の細かい繊維（ランダムな横筋） */
+        repeating-linear-gradient(
+            0deg,
+            rgba(0, 0, 0, 0.03) 0px,
+            rgba(0, 0, 0, 0.03) 1px,
+            transparent 1px,
+            transparent 3px
+        ),
+        
+        /* 4. 木目の濃淡ストライプ */
+        repeating-linear-gradient(
+            90deg,
+            #c48a4e 0px,
+            #b57b40 25px,
+            #cb9358 60px,
+            #ba8045 110px,
+            #c48a4e 160px,
+            #ab7136 200px
+        );
+    /* 机全体の質感調整 */
+    box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.4);
+}
+
+#top_card {
+    border: 2px solid #000000;
+    display: inline-flex;
+    width: 100px;
+    height: 180px;
+    border-radius: 10px;
+    padding: 10px;
+    color: #ffffff;
+    font-size: 80px;
+    justify-content: center;
+    align-items: center;
+}
