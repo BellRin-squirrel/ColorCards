@@ -168,6 +168,10 @@ impl PlayerCards {
     fn new() -> Self {
         PlayerCards { cards: Vec::new() }
     }
+
+    fn get_cards(&self) -> Vec<(card_color, card_number)> {
+        self.cards.clone()
+    }
 }
 
 // 盤面の一番上のカード
@@ -260,6 +264,12 @@ fn invoke_get_stage_card(state: State<Mutex<StageCard>>) -> (card_color, card_nu
 }
 
 #[tauri::command]
+fn invoke_get_player_cards(state: State<Mutex<PlayerCards>>) -> Vec<(card_color, card_number)>{
+    let player_cards = state.lock().unwrap();
+    player_cards.get_cards()
+}
+
+#[tauri::command]
 fn show_data(state: State<Mutex<GameConfig>>) {
     let data = state.lock().unwrap();
     println!("現在の設定: 人数 = {}, 回数 = {}", data.people, data.play_times);
@@ -273,7 +283,7 @@ fn main() {
         .manage(Mutex::new(PlayerCards::new()))
         .manage(Mutex::new(StageCard::new()))
         .manage(Mutex::new(GameConfig { people: 0, play_times: 0 }))
-        .invoke_handler(tauri::generate_handler![setup, show_data, invoke_get_stage_card])
+        .invoke_handler(tauri::generate_handler![setup, show_data, invoke_get_stage_card, invoke_get_player_cards])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

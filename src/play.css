@@ -38,14 +38,28 @@ body {
 }
 
 #top_card {
-    border: 2px solid #000000;
+    /* border: 2px solid #000000; */
     display: inline-flex;
     width: 100px;
     height: 180px;
+}
+
+.card {
     border-radius: 10px;
     padding: 10px;
     color: #ffffff;
     font-size: 80px;
     justify-content: center;
     align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+#player_cards {
+    
+}
+
+.player_card {
+    display: inline-flex;
+    width: 100px;
+    height: 180px;
 }
