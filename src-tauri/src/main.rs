@@ -3,6 +3,7 @@ use tauri::State;
 use rand::seq::SliceRandom; // シャッフルに使う機能
 use rand::rng;
 use serde::Serialize;
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 enum card_color {
@@ -186,6 +187,54 @@ impl StageCard {
     }
 }
 
+struct TurnState {
+    pub current_turn: usize, // 0: Player, 1〜N: CPU 1〜N
+    pub direction: i32,      // +1: 時計回り, -1: 反時計回り (Reverse用)
+    pub current_color: card_color, // 場がWildのときに「宣言された色」を保持する
+    pub draw_penalty: u32,   // Draw2やWildDrawの累積枚数（任意）
+    pub is_game_over: bool,
+    pub winner: Option<String>,
+}
+
+impl TurnState {
+    fn new() -> Self {
+        TurnState {
+            current_turn: 0,
+            direction: 1,
+            current_color: card_color::None,
+            draw_penalty: 0,
+            is_game_over: false,
+            winner: None,
+        }
+    }
+}
+
+fn can_play_card(
+    hand_color: card_color, 
+    hand_number: card_number, 
+    current_color: card_color, 
+    stage_number: card_number
+) -> bool {
+    // 1. ワイルド系はいつでも出せる
+    if hand_number == card_number::Wild 
+        || hand_number == card_number::WildDraw 
+        || hand_number == card_number::ShuffleWild {
+        return true;
+    }
+
+    // 2. 現在の場の色と一致している
+    if hand_color == current_color {
+        return true;
+    }
+
+    // 3. 数字・役（SkipやReverseなど）が一致している
+    if hand_number == stage_number {
+        return true;
+    }
+
+    false
+}
+
 #[tauri::command]
 fn setup(
     people: u32,
@@ -194,12 +243,17 @@ fn setup(
     state_deck: State<Mutex<Deck>>,
     state_cpu_cards:State<Mutex<CpuCards>>,
     state_player_cards: State<Mutex<PlayerCards>>,
-    state_stage_card: State<Mutex<StageCard>>
+    state_stage_card: State<Mutex<StageCard>>,
+    state_turn_state: State<Mutex<TurnState>>
 ){
-    // state.lock().unwrap() で中身を取り出す（合言葉のようなものです）
+    // state.lock().unwrap() で中身を取り出す
     let mut data = state_game_config.lock().unwrap();
     data.people = people;
     data.play_times = play_times;
+
+    // ターン情報リセット
+    let mut turn_state = state_turn_state.lock().unwrap();
+    *turn_state = TurnState::new();
 
     println!("保存完了: 人数 = {}, 回数 = {}", data.people, data.play_times);
 
@@ -222,6 +276,9 @@ fn setup(
     let mut stage_card = state_stage_card.lock().unwrap();
     let will_be_stage_card = deck.draw_card();
     *stage_card = StageCard::register(will_be_stage_card.0, will_be_stage_card.1);
+
+    // ステージカードに登録
+    turn_state.current_color = will_be_stage_card.0;
 
     // シャッフル完了
     let top_card = deck.get_top_card();
@@ -268,6 +325,53 @@ fn invoke_get_game_config(state: State<Mutex<GameConfig>>) -> (u32, u32){
     (data.people, data.play_times)
 }
 
+#[tauri::command]
+fn invoke_get_current_turn(state: State<Mutex<TurnState>>) -> Value {
+    let turn_state = state.lock().unwrap();
+    json!({
+        "is_player": if turn_state.current_turn == 0 { 1 } else{ 0 }
+    })
+}
+
+#[tauri::command]
+fn invoke_player_play_card(
+    card_index: usize,
+    state_player_cards: State<Mutex<PlayerCards>>,
+    state_stage_card: State<Mutex<StageCard>>,
+    state_turn_state: State<Mutex<TurnState>>
+) -> Value {
+    // 選択されたカードインデックスから選択されたカード情報を取得
+    let player_cards = state_player_cards.lock().unwrap();
+    let mut target_card: (card_color, card_number) = (card_color::None, card_number::Zero);
+    match player_cards.cards.get(card_index) {
+        Some(val) => target_card = *val,
+        None => return json!({ "success": false }),
+    }
+    // 返す値を設定
+    let hand_color: card_color = target_card.0;
+    let hand_number: card_number = target_card.1;
+
+    // 盤面に出ているカード情報取得
+    let unwraped_state_turn_state = state_turn_state.lock().unwrap();
+    let unwraped_state_stage_card = state_stage_card.lock().unwrap();
+    let stage_card = unwraped_state_stage_card.card;
+    let current_color = unwraped_state_turn_state.current_color;
+    let stage_number: card_number = stage_card.1;
+
+    return json!({ "success": can_play_card(hand_color, hand_number, current_color, stage_number) })
+}
+
+#[tauri::command]
+fn invoke_cpu_play_turn(cpu_id: usize) {
+    println!("CPU{}のターンです。", cpu_id);
+}
+
+#[tauri::command]
+fn invoke_check_game_over() -> bool {
+    println!("勝利判定");
+    false
+}
+
 fn main() {
     // colorcards_lib::run()
     tauri::Builder::default()
@@ -275,9 +379,9 @@ fn main() {
         .manage(Mutex::new(CpuCards::new()))
         .manage(Mutex::new(PlayerCards::new()))
         .manage(Mutex::new(StageCard::new()))
+        .manage(Mutex::new(TurnState::new()))
         .manage(Mutex::new(GameConfig { people: 0, play_times: 0 }))
-        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards])
+        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards, invoke_get_current_turn, invoke_player_play_card, invoke_cpu_play_turn, invoke_check_game_over])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

@@ -42,7 +42,67 @@ document.addEventListener("DOMContentLoaded", async function () {
         el_player_cards.appendChild(player_card);
     }
 
-    // CPU人数取得
-    let cpu_members = await invoke("invoke_get_game_config")[0];
-    console.log(cpu_members);
+    // ゲームプレイ
+    gameLoop();
 });
+
+// ゲームプレイループ
+async function gameLoop() {
+    let gameOver = false;
+
+    while (!gameOver) {
+        // 1. 現在のターン情報を取得
+        let turnInfo = await invoke("invoke_get_current_turn"); 
+
+        console.log(turnInfo.is_player);
+
+        if (turnInfo.is_player) {
+            // --- 人間のターン ---
+            console.log("あなたの番です。カードをクリックしてください。");
+            // カードがクリックされるまで待機（Promise を使う）
+            let selectedCardIndex = await waitForPlayerAction();
+            
+            // Rustに出す命令を送る（出せるかどうかもRustでチェック）
+            let result = await invoke("invoke_player_play_card", { cardIndex: selectedCardIndex });
+            if (!result.success) {
+                alert("そのカードは出せません！");
+                continue; // やり直し
+            }
+        } else {
+            // --- CPUのターン ---
+            console.log(`CPU ${turnInfo.cpu_id} の番です...`);
+            // CPUが考えているように見せるため1秒待つ演出
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Rust側でCPUの1手（思考とカード出し）を実行してもらう
+            await invoke("invoke_cpu_play_turn", { cpuId: turnInfo.cpu_id });
+        }
+
+        // 2. 画面を再描画（場札、手札、CPUの残り枚数など）
+        await updateUI();
+
+        // 3. 勝敗判定
+        gameOver = await invoke("invoke_check_game_over");
+    }
+
+    alert("ゲーム終了！");
+}
+
+function waitForPlayerAction() {
+    return new Promise((resolve) => {
+        // 画面上にある手札のカード要素をすべて取得
+        const cards = document.querySelectorAll(".player_card");
+
+        cards.forEach((cardElement, index) => {
+            // 一度だけ発火するように { once: true } を付けると綺麗に処理できます
+            cardElement.addEventListener("click", () => {
+                // クリックされたカードの番号 (0, 1, 2...) を渡して Promise を完了させる
+                resolve(index);
+            }, { once: true });
+        });
+    });
+}
+
+function updateUI() {
+
+}
