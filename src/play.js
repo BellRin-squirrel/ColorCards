@@ -15,13 +15,15 @@ const enum_to_display = {
     "Draw": "D",
     "Wild": "w",
     "WildDraw": "W",
-    "WildShuffle": "H"
+    "ShuffleWild": "H"
 }
 
-document.addEventListener("DOMContentLoaded", async function () {
-    const el_stage_card = document.getElementById("top_card");
-    const el_player_cards = document.getElementById("player_cards");
+let el_stage_card = null;
+let el_player_cards = null;
 
+document.addEventListener("DOMContentLoaded", async function () {
+    el_stage_card = document.getElementById("top_card");
+    el_player_cards = document.getElementById("player_cards");
     console.log("[Debug] 描画開始");
     
     // ステージのカードを表示
@@ -32,15 +34,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // プレイヤーのカードを表示
     let player_cards = await invoke("invoke_get_player_cards");
-    for(let card of player_cards) {
-        // 描画
-        let player_card = document.createElement("div");
-        player_card.classList.add("card");
-        player_card.classList.add("player_card");
-        player_card.classList.add(card[0]);
-        player_card.textContent = enum_to_display[card[1]] == undefined ? card[1] : enum_to_display[card[1]];
-        el_player_cards.appendChild(player_card);
-    }
+    display_player_cards(player_cards);
 
     // ゲームプレイ
     gameLoop();
@@ -103,6 +97,33 @@ function waitForPlayerAction() {
     });
 }
 
-function updateUI() {
+function display_player_cards(cards) {
+    // 既存の描画コンテンツを消去
+    el_player_cards.innerHTML = "";
+    // 再描画
+    for(let card of cards) {
+        // 描画
+        let player_card = document.createElement("div");
+        player_card.classList.add("card");
+        player_card.classList.add("player_card");
+        player_card.classList.add(card[0]);
+        player_card.textContent = enum_to_display[card[1]] == undefined ? card[1] : enum_to_display[card[1]];
+        el_player_cards.appendChild(player_card);
+    }
+}
 
+async function updateUI() {
+    let info = await invoke("invoke_update_ui");
+    let stage_card_number = info.stage_card[1];
+    let stage_card_color = info.current_color;
+    let player_cards = info.player_cards;
+
+    // 場のカードの文字を変更
+    el_stage_card.textContent = enum_to_display[stage_card_number] == undefined ? stage_card_number : enum_to_display[stage_card_number];
+
+    // 場のカードの色を変更
+    el_stage_card.className = `class ${stage_card_color}`;
+
+    // プレイヤーの手持ちカードを再描画
+    display_player_cards(player_cards);
 }

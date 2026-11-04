@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{State};
 use rand::seq::SliceRandom; // シャッフルに使う機能
 use rand::rng;
 use serde::Serialize;
@@ -35,8 +35,8 @@ enum card_number {
 }
 
 struct GameConfig {
-    people: u32,
-    play_times: u32
+    people: i32,
+    play_times: i32
 }
 
 /* cardはcolorとcard_numberからなる配列*/
@@ -85,7 +85,7 @@ impl Deck {
                     },
                 1..=9 => 
                     /* 1~9 は各色2枚ずつ */
-                    for i in 0..2 {
+                    for _i in 0..2 {
                         for j in 0..4 {
                             match j {
                                 0 => card_color = card_color::Blue,
@@ -99,7 +99,7 @@ impl Deck {
                     },
                 10..=12 => 
                     /* Draw, Reverse, Skip は各色2枚ずつ */
-                    for i in 0..2 {
+                    for _i in 0..2 {
                         for j in 0..4 {
                             match j {
                                 0 => card_color = card_color::Blue,
@@ -113,7 +113,7 @@ impl Deck {
                     },
                 13..=14 => 
                     /* Wild, WildDraw は4枚ずつ */
-                    for i in 0..4 {
+                    for _i in 0..4 {
                         card_color = card_color::None;
                         grid.push((card_color, card_number));
                     }
@@ -185,6 +185,62 @@ impl StageCard {
     fn get_stage_card(&self) -> (card_color, card_number) {
         self.card
     }
+
+    fn play_card_to_stage(
+        &mut self,
+        card_color: card_color,
+        card_number: card_number,
+        turn_state: &mut TurnState,
+        game_config: &GameConfig
+    ) {
+        // 場のカードを変更
+        self.card.0 = card_color;
+        self.card.1 = card_number;
+        
+        // 場のカードの色を変更
+        turn_state.current_color = card_color;
+
+        // カード効果を発揮
+        match card_number {
+            card_number::Skip => {
+                // 先にターンを一つ進めておく
+                let total_player: i32 = game_config.people + 1; //プレイヤーの分を加算
+                let next_turn = (turn_state.current_turn as i32 + turn_state.direction).rem_euclid(total_player);
+                turn_state.current_turn = next_turn as usize;
+            },
+            card_number::Reverse => {
+                // 回転を反転
+                turn_state.direction *= -1;
+            },
+            card_number::Draw => {
+                // 次のプレイヤーは２枚引く判定
+                turn_state.draw_penalty += 2;
+            },
+            card_number::Wild => {
+                // 次のプレイヤーの色を指定
+            },
+            card_number::WildDraw => {
+                // 次のプレイヤーの色を指定し、４枚引かせる
+                turn_state.draw_penalty += 4;
+            },
+            card_number::ShuffleWild => {
+                // すべてのプレイヤーのシャッフル
+            }
+            _ => {
+                // なんもしない
+            }
+        }
+
+        // 通常のターンを次に進める処理
+        // プレイしているCPUとプレイヤーの合計数
+        let total_player: i32 = game_config.people + 1; //プレイヤーの分を加算
+        let next_turn = (turn_state.current_turn as i32 + turn_state.direction).rem_euclid(total_player);
+        /*
+        A as B は一時的に A を B の型として扱うというもの
+        rem_euclid は剰余をプラスにする剰余計算機
+        */
+        turn_state.current_turn = next_turn as usize;
+    }
 }
 
 struct TurnState {
@@ -248,8 +304,8 @@ fn setup(
 ){
     // state.lock().unwrap() で中身を取り出す
     let mut data = state_game_config.lock().unwrap();
-    data.people = people;
-    data.play_times = play_times;
+    data.people = people as i32;
+    data.play_times = play_times as i32;
 
     // ターン情報リセット
     let mut turn_state = state_turn_state.lock().unwrap();
@@ -301,7 +357,7 @@ fn setup(
     }
 
     // プレイヤー配布
-    for i in 0..7 {
+    for _i in 0..7 {
         player_cards.cards.push(deck.draw_card());
     }
 }
@@ -320,7 +376,7 @@ fn invoke_get_player_cards(state: State<Mutex<PlayerCards>>) -> Vec<(card_color,
 }
 
 #[tauri::command]
-fn invoke_get_game_config(state: State<Mutex<GameConfig>>) -> (u32, u32){
+fn invoke_get_game_config(state: State<Mutex<GameConfig>>) -> (i32, i32){
     let data = state.lock().unwrap();
     (data.people, data.play_times)
 }
@@ -329,7 +385,8 @@ fn invoke_get_game_config(state: State<Mutex<GameConfig>>) -> (u32, u32){
 fn invoke_get_current_turn(state: State<Mutex<TurnState>>) -> Value {
     let turn_state = state.lock().unwrap();
     json!({
-        "is_player": if turn_state.current_turn == 0 { 1 } else{ 0 }
+        "is_player": if turn_state.current_turn == 0 { 1 } else{ 0 },
+        "cpu_id": if turn_state.current_turn == 0 { 0 } else{ turn_state.current_turn }
     })
 }
 
@@ -338,10 +395,16 @@ fn invoke_player_play_card(
     card_index: usize,
     state_player_cards: State<Mutex<PlayerCards>>,
     state_stage_card: State<Mutex<StageCard>>,
-    state_turn_state: State<Mutex<TurnState>>
+    state_turn_state: State<Mutex<TurnState>>,
+    stage_game_config: State<Mutex<GameConfig>>
 ) -> Value {
+    // unlock
+    let game_config = stage_game_config.lock().unwrap();
+    let mut unwraped_state_turn_state = state_turn_state.lock().unwrap();
+    let mut unwraped_state_stage_card = state_stage_card.lock().unwrap();
+    let mut player_cards = state_player_cards.lock().unwrap();
+
     // 選択されたカードインデックスから選択されたカード情報を取得
-    let player_cards = state_player_cards.lock().unwrap();
     let mut target_card: (card_color, card_number) = (card_color::None, card_number::Zero);
     match player_cards.cards.get(card_index) {
         Some(val) => target_card = *val,
@@ -352,18 +415,56 @@ fn invoke_player_play_card(
     let hand_number: card_number = target_card.1;
 
     // 盤面に出ているカード情報取得
-    let unwraped_state_turn_state = state_turn_state.lock().unwrap();
-    let unwraped_state_stage_card = state_stage_card.lock().unwrap();
     let stage_card = unwraped_state_stage_card.card;
     let current_color = unwraped_state_turn_state.current_color;
     let stage_number: card_number = stage_card.1;
 
-    return json!({ "success": can_play_card(hand_color, hand_number, current_color, stage_number) })
+    if !can_play_card(hand_color, hand_number, current_color, stage_number) {
+        // 出せない
+        return json!({ "success": false })
+    }
+
+    // そのカード出せるから出す
+    unwraped_state_stage_card.play_card_to_stage(hand_color, hand_number, &mut unwraped_state_turn_state, &game_config);
+
+    // 出した後にプレイヤーのカードを減らす
+    player_cards.cards.remove(card_index);
+
+    // 返答
+    return json!({ "success": true })
 }
 
 #[tauri::command]
 fn invoke_cpu_play_turn(cpu_id: usize) {
     println!("CPU{}のターンです。", cpu_id);
+}
+
+#[tauri::command]
+fn invoke_update_ui(
+    state_player_cards: State<Mutex<PlayerCards>>,
+    state_cpu_cards: State<Mutex<CpuCards>>,
+    state_stage_card: State<Mutex<StageCard>>,
+    state_turn_state: State<Mutex<TurnState>>,
+    state_game_config: State<Mutex<GameConfig>>
+) -> Value {
+    let player_cards = state_player_cards.lock().unwrap();
+    let cpu_cards = state_cpu_cards.lock().unwrap();
+    let stage_card = state_stage_card.lock().unwrap();
+    let turn_state = state_turn_state.lock().unwrap();
+    let game_config = state_game_config.lock().unwrap();
+
+    // CPU のそれぞれが持っているカード枚数をカウント
+    let mut cpu_cards_number: Vec<i32> = Vec::new();
+    for cards in &cpu_cards.cards {
+        cpu_cards_number.push(cards.len() as i32);
+    }
+
+    json!({
+        "player_cards": &player_cards.cards,
+        "cpu_cards": cpu_cards_number,
+        "stage_card": &stage_card.card,
+        "current_color": &turn_state.current_color
+    })
 }
 
 #[tauri::command]
@@ -381,7 +482,7 @@ fn main() {
         .manage(Mutex::new(StageCard::new()))
         .manage(Mutex::new(TurnState::new()))
         .manage(Mutex::new(GameConfig { people: 0, play_times: 0 }))
-        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards, invoke_get_current_turn, invoke_player_play_card, invoke_cpu_play_turn, invoke_check_game_over])
+        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards, invoke_get_current_turn, invoke_player_play_card, invoke_cpu_play_turn, invoke_check_game_over, invoke_update_ui])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
