@@ -1,7 +1,9 @@
 use std::sync::Mutex;
 use tauri::{State};
-use rand::seq::SliceRandom; // シャッフルに使う機能
+use rand;
 use rand::rng;
+use rand::seq::SliceRandom; // シャッフルに使う機能
+use rand::prelude::IndexedRandom;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -386,7 +388,7 @@ fn invoke_get_current_turn(state: State<Mutex<TurnState>>) -> Value {
     let turn_state = state.lock().unwrap();
     json!({
         "is_player": if turn_state.current_turn == 0 { 1 } else{ 0 },
-        "cpu_id": if turn_state.current_turn == 0 { 0 } else{ turn_state.current_turn }
+        "cpu_id": if turn_state.current_turn == 0 { 0 } else{ turn_state.current_turn - 1 }
     })
 }
 
@@ -435,8 +437,78 @@ fn invoke_player_play_card(
 }
 
 #[tauri::command]
-fn invoke_cpu_play_turn(cpu_id: usize) {
+fn invoke_player_skip(
+    state_player_cards: State<Mutex<PlayerCards>>,
+    state_turn_state: State<Mutex<TurnState>>,
+    stage_game_config: State<Mutex<GameConfig>>,
+    state_deck: State<Mutex<Deck>>
+) {
+    // unlock
+    let game_config = stage_game_config.lock().unwrap();
+    let mut turn_state = state_turn_state.lock().unwrap();
+    let mut player_cards = state_player_cards.lock().unwrap();
+    let mut deck = state_deck.lock().unwrap();
+
+    // カードを２枚引く
+    player_cards.cards.push(deck.draw_card());
+    player_cards.cards.push(deck.draw_card());
+    // 通常のターンを次に進める処理
+    // プレイしているCPUとプレイヤーの合計数
+    let total_player: i32 = game_config.people + 1; //プレイヤーの分を加算
+    let next_turn = (turn_state.current_turn as i32 + turn_state.direction).rem_euclid(total_player);
+    turn_state.current_turn = next_turn as usize;
+}
+
+#[tauri::command]
+fn invoke_cpu_play_turn(
+    cpu_id: usize,
+    state_stage_card: State<Mutex<StageCard>>,
+    state_turn_state: State<Mutex<TurnState>>,
+    state_cpu_cards: State<Mutex<CpuCards>>,
+    state_game_config: State<Mutex<GameConfig>>,
+    state_deck: State<Mutex<Deck>>
+) {
     println!("CPU{}のターンです。", cpu_id);
+    let mut stage_card = state_stage_card.lock().unwrap();
+    let mut turn_state = state_turn_state.lock().unwrap();
+    let mut cpu_cards = state_cpu_cards.lock().unwrap();
+    let mut game_config = state_game_config.lock().unwrap();
+    let mut deck = state_deck.lock().unwrap();
+    let one_cpu_cards = &mut cpu_cards.cards[cpu_id];
+
+    // 出せるカードのインデックス一覧
+    let mut can_hand_card_indexes: Vec<usize> = Vec::new();
+
+    // CPU の出せるカード一覧取得
+    for index in 0..one_cpu_cards.len() {
+        let target_card: (card_color, card_number) = one_cpu_cards[index];
+        // target_card が出せるかの検証
+        if can_play_card(target_card.0, target_card.1, turn_state.current_color, stage_card.card.1) {
+            // 出せる
+            can_hand_card_indexes.push(index);
+        }
+    }
+
+    // 出せるカード一覧からランダムに出す
+    let mut rng = rng();
+    match can_hand_card_indexes.choose(&mut rng) {
+        Some(&val) => {
+            // 出した後に CPU のカードを減らす
+            let played_card = one_cpu_cards.remove(val); // 消した内容は戻り値になる
+            // 出すカードのインデックスは val
+            stage_card.play_card_to_stage(played_card.0, played_card.1, &mut turn_state, &game_config); // この関数で移動的に次のターンに進む
+        },
+        None => {
+            // 出せるカードなし -> 2枚ドロー
+            one_cpu_cards.push(deck.draw_card());
+            one_cpu_cards.push(deck.draw_card());
+            // 通常のターンを次に進める処理
+            // プレイしているCPUとプレイヤーの合計数
+            let total_player: i32 = game_config.people + 1; //プレイヤーの分を加算
+            let next_turn = (turn_state.current_turn as i32 + turn_state.direction).rem_euclid(total_player);
+            turn_state.current_turn = next_turn as usize;
+        },
+    }
 }
 
 #[tauri::command]
@@ -444,14 +516,12 @@ fn invoke_update_ui(
     state_player_cards: State<Mutex<PlayerCards>>,
     state_cpu_cards: State<Mutex<CpuCards>>,
     state_stage_card: State<Mutex<StageCard>>,
-    state_turn_state: State<Mutex<TurnState>>,
-    state_game_config: State<Mutex<GameConfig>>
+    state_turn_state: State<Mutex<TurnState>>
 ) -> Value {
     let player_cards = state_player_cards.lock().unwrap();
     let cpu_cards = state_cpu_cards.lock().unwrap();
     let stage_card = state_stage_card.lock().unwrap();
     let turn_state = state_turn_state.lock().unwrap();
-    let game_config = state_game_config.lock().unwrap();
 
     // CPU のそれぞれが持っているカード枚数をカウント
     let mut cpu_cards_number: Vec<i32> = Vec::new();
@@ -482,7 +552,7 @@ fn main() {
         .manage(Mutex::new(StageCard::new()))
         .manage(Mutex::new(TurnState::new()))
         .manage(Mutex::new(GameConfig { people: 0, play_times: 0 }))
-        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards, invoke_get_current_turn, invoke_player_play_card, invoke_cpu_play_turn, invoke_check_game_over, invoke_update_ui])
+        .invoke_handler(tauri::generate_handler![setup, invoke_get_game_config, invoke_get_stage_card, invoke_get_player_cards, invoke_get_current_turn, invoke_player_play_card, invoke_player_skip, invoke_cpu_play_turn, invoke_check_game_over, invoke_update_ui])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
